@@ -49,7 +49,6 @@ function video_to_s3_upload_videos_logic($selected_videos = null) {
 
     global $wpdb;
     
-    // Fetch videos from the database based on selection or all videos
     $query = "SELECT ID, guid FROM {$wpdb->prefix}posts WHERE post_type = 'attachment' AND post_mime_type LIKE 'video/%'";
     if ($selected_videos) {
         $query .= " AND ID IN (" . implode(',', array_map('intval', $selected_videos)) . ")";
@@ -58,31 +57,38 @@ function video_to_s3_upload_videos_logic($selected_videos = null) {
 
     $processed = 0;
     $errors = [];
+    $skipped = 0;
 
     foreach ($videos as $video) {
         $file_path = str_replace(get_site_url(), ABSPATH, $video->guid);
+        $key = basename($file_path);
         
         if (file_exists($file_path)) {
             $file_size = filesize($file_path);
-            error_log("Attempting to upload video: " . $video->guid . " (Size: " . $file_size . " bytes)");
+            error_log("Checking video: " . $video->guid . " (Size: " . $file_size . " bytes)");
             
-            $content = file_get_contents($file_path);
-            if ($content === false) {
-                $errors[] = "Could not read file for upload: " . $video->guid;
-                error_log("Failed to read file: " . $video->guid);
-            } else {
-                try {
-                    $result = $s3->putObject([
-                        'Bucket' => $bucket,
-                        'Key'    => basename($file_path),
-                        'Body'   => $content
-                    ]);
-                    error_log("Successfully uploaded: " . $video->guid . " to S3");
-                    $processed++;
-                } catch (S3Exception $e) {
-                    $errors[] = "Error uploading " . $video->guid . ": " . $e->getMessage();
-                    error_log("Error uploading " . $video->guid . ": " . $e->getMessage());
+            if (!video_to_s3_check_file_exists($bucket, $key)) {
+                $content = file_get_contents($file_path);
+                if ($content === false) {
+                    $errors[] = "Could not read file for upload: " . $video->guid;
+                    error_log("Failed to read file: " . $video->guid);
+                } else {
+                    try {
+                        $result = $s3->putObject([
+                            'Bucket' => $bucket,
+                            'Key'    => $key,
+                            'Body'   => $content
+                        ]);
+                        error_log("Successfully uploaded: " . $video->guid . " to S3");
+                        $processed++;
+                    } catch (S3Exception $e) {
+                        $errors[] = "Error uploading " . $video->guid . ": " . $e->getMessage();
+                        error_log("Error uploading " . $video->guid . ": " . $e->getMessage());
+                    }
                 }
+            } else {
+                error_log("File already exists in S3: " . $key);
+                $skipped++;
             }
         } else {
             $errors[] = "File not found at path: " . $file_path;
@@ -97,6 +103,10 @@ function video_to_s3_upload_videos_logic($selected_videos = null) {
         $messages[] = '[info]Successfully uploaded ' . $processed . ' videos.';
     }
 
+    if ($skipped > 0) {
+        $messages[] = '[info]' . $skipped . ' videos were skipped because they already exist in the S3 bucket.';
+    }
+
     if (!empty($errors)) {
         $error_message = sprintf('[error]Encountered %d errors. Here are the first 3: %s', 
             count($errors), 
@@ -108,6 +118,26 @@ function video_to_s3_upload_videos_logic($selected_videos = null) {
     // Store messages in transients for display in the admin area
     set_transient('vts_upload_messages', $messages, 60); // Keep for 1 minute
 
-    // Log total processed and errors for debugging or logging purposes
-    error_log(sprintf("Total videos processed: %d, Total errors: %d", $processed, count($errors)));
+    // Log total processed, skipped, and errors for debugging or logging purposes
+    error_log(sprintf("Total videos processed: %d, Skipped: %d, Total errors: %d", $processed, $skipped, count($errors)));
 }
+
+function video_to_s3_check_file_exists($bucket, $key) {
+    global $s3;
+    
+    try {
+        $s3->headObject([
+            'Bucket' => $bucket,
+            'Key'    => $key
+        ]);
+        return true; // File exists
+    } catch (S3Exception $e) {
+        if ($e->getAwsErrorCode() === 'NotFound') {
+            return false; // File does not exist
+        }
+        // If it's a different error, you might want to handle or log it
+        error_log("Error checking file existence: " . $e->getMessage());
+        return false;
+    }
+}
+

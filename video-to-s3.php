@@ -115,6 +115,19 @@ function video_to_s3_dashboard() {
     }
     echo '</form>';
 
+    // Before the upload form or in the "Videos" tab
+    $existing_files = video_to_s3_list_bucket_contents();
+    echo '<h3>Existing Videos in S3 Bucket</h3>';
+    if (!empty($existing_files)) {
+        echo '<ul>';
+        foreach ($existing_files as $file) {
+            echo '<li>' . esc_html($file) . '</li>';
+        }
+        echo '</ul>';
+    } else {
+        echo '<p>No videos found in the S3 bucket.</p>';
+    }
+
     echo '<h3>Upload Videos to S3</h3>';
     echo '<p><a href="' . admin_url('admin-post.php?action=upload_videos_to_s3') . '" class="button">Upload All Videos to S3</a></p>';
 
