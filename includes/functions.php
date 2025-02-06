@@ -3,7 +3,7 @@ use Aws\S3\S3Client;
 use GuzzleHttp\Client;
 
 // Include necessary files if not already done in your main plugin file
-require_once VIDEO_TO_S3_PATH . 'vendor/aws/aws-sdk-php/src/functions.php'; // Adjust this path
+require_once VIDEO_TO_S3_PATH . 'vendor/autoload.php';
 
 function video_to_s3_list_bucket_contents() {
     $aws_key = get_option('vts_aws_key');
@@ -163,7 +163,8 @@ function video_to_s3_check_file_exists($bucket, $key, $s3) {
 // Function to stream video content, whether from local or S3
 function get_video_stream($video_url) {
     // Check if the video is stored in S3
-    $s3_url_pattern = '/^https?:\/\/.*\.s3\.amazonaws\.com\//';
+    $s3_url_pattern = '/^https?:\/\/(.*\.s3\.[a-z0-9-]+\.amazonaws\.com|(.*\.)?s3.amazonaws.com)\//';
+
     if (preg_match($s3_url_pattern, $video_url)) {
         try {
             $client = new GuzzleHttp\Client();
@@ -190,13 +191,16 @@ function get_video_stream($video_url) {
 add_filter('display_video_content', 'stream_video_content');
 function stream_video_content($content, $video_url) {
     if ($stream = get_video_stream($video_url)) {
-        // Here you would set the appropriate headers for video streaming
-        header('Content-Type: video/mp4'); // Adjust according to the video format
+        header('Content-Type: video/mp4');
         header('Content-Disposition: inline; filename="' . basename($video_url) . '"');
-        echo $stream;
-        exit; // Stop further execution
+        // If $stream is a resource, use this:
+        if (is_resource($stream)) {
+            fpassthru($stream);
+        } else {
+            echo $stream;
+        }
+        exit;
     } else {
-        // Handle the case where the video could not be retrieved
         return "Video could not be loaded.";
     }
 }
@@ -264,25 +268,38 @@ function video_to_s3_upload_single_video($video_id, $file_path) {
     ]);
 
     $key = basename($file_path);
+    
     try {
         $result = $s3->putObject([
             'Bucket' => $bucket,
             'Key'    => $key,
             'SourceFile' => $file_path
         ]);
-        
-        // Update the attachment's guid with the new S3 URL
-        update_post_meta($video_id, '_wp_attached_file', $key);
-        update_post_meta($video_id, '_wp_attachment_metadata', array('file' => $key));
-        $new_guid = "https://{$bucket}.s3.{$region}.amazonaws.com/{$key}";
-        wp_update_post(array('ID' => $video_id, 'guid' => $new_guid));
-        
+
+        // Update attachment metadata
+        $new_url = "https://{$bucket}.s3.{$region}.amazonaws.com/{$key}";
+        update_attached_file($video_id, $new_url); // This updates the file path in attachment meta
+
+        // Update attachment metadata to reflect new location
+        $metadata = wp_get_attachment_metadata($video_id);
+        if (is_array($metadata)) {
+            $metadata['file'] = $key;
+            wp_update_attachment_metadata($video_id, $metadata);
+        } else {
+            // If metadata doesn't exist, create it. This might happen for very old uploads or if something went wrong
+            wp_update_attachment_metadata($video_id, array('file' => $key));
+        }
+
         // Log success
         error_log("Successfully uploaded video {$key} to S3");
+        return true;
+    } catch (S3Exception $e) {
+        // Log S3 specific errors
+        error_log("S3 Error uploading video {$key}: " . $e->getMessage());
+        return false;
     } catch (Exception $e) {
-        // Log error
-        error_log("Error uploading video {$key} to S3: " . $e->getMessage());
+        // Log general PHP errors
+        error_log("General error uploading video {$key}: " . $e->getMessage());
         return false;
     }
-    return true;
 }
