@@ -32,8 +32,7 @@ function video_to_s3_list_bucket_contents() {
     }
 }
 
-function video_to_s3_upload_videos_logic() {
-    // Retrieve AWS credentials from plugin settings
+function video_to_s3_upload_videos_logic($selected_videos = null) {
     $aws_key = get_option('vts_aws_key');
     $aws_secret = get_option('vts_aws_secret');
     $bucket = get_option('vts_aws_bucket');
@@ -50,7 +49,13 @@ function video_to_s3_upload_videos_logic() {
     ]);
 
     global $wpdb;
-    $videos = $wpdb->get_results("SELECT ID, guid FROM {$wpdb->prefix}posts WHERE post_type = 'attachment' AND post_mime_type LIKE 'video/%'");
+    
+    // Fetch videos from the database based on selection or all videos
+    $query = "SELECT ID, guid FROM {$wpdb->prefix}posts WHERE post_type = 'attachment' AND post_mime_type LIKE 'video/%'";
+    if ($selected_videos) {
+        $query .= " AND ID IN (" . implode(',', array_map('intval', $selected_videos)) . ")";
+    }
+    $videos = $wpdb->get_results($query);
 
     $batch_size = 10; // Number of videos to process in one batch
     $total_videos = count($videos);

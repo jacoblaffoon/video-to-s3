@@ -113,9 +113,21 @@ function video_to_s3_dashboard() {
     if (isset($_POST['submit']) && wp_verify_nonce($_POST['update_aws_credentials_nonce'], 'update-aws-credentials')) {
         echo '<p class="notice notice-success is-dismissible">Settings Updated!</p>';
     }
+    echo '</form>';
 
     echo '<h3>Upload Videos to S3</h3>';
-    echo '<p><a href="' . admin_url('admin-post.php?action=upload_videos_to_s3') . '" class="button">Upload Videos to S3</a></p>';
+    echo '<p><a href="' . admin_url('admin-post.php?action=upload_videos_to_s3') . '" class="button">Upload All Videos to S3</a></p>';
+
+    // Video selection form
+    $media_items = get_posts(array('post_type' => 'attachment', 'post_mime_type' => 'video'));
+    echo '<form method="post" action="' . admin_url('admin-post.php') . '">';
+    echo '<input type="hidden" name="action" value="upload_videos_to_s3">';
+    foreach ($media_items as $item) {
+        echo '<input type="checkbox" name="selected_videos[]" value="' . $item->ID . '">' . esc_html($item->post_title) . '<br>';
+    }
+    echo '<input type="submit" value="Upload Selected Videos">';
+    echo '</form>';
+
     echo '</div>';
 }
 
@@ -190,7 +202,8 @@ function video_to_s3_upload_videos() {
         wp_die(__('You do not have sufficient permissions to access this page.'));
     }
     
-    video_to_s3_upload_videos_logic(); 
+    $selected_videos = isset($_POST['selected_videos']) ? $_POST['selected_videos'] : null;
+    video_to_s3_upload_videos_logic($selected_videos);
 
     // Set a transient to inform the user about the upload
     set_transient('vts_upload_messages', ['[info]Upload process completed.'], 60);
