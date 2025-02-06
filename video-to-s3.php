@@ -64,7 +64,7 @@ function video_to_s3_dashboard() {
         if (!empty($bucket_contents)) {
             echo '<ul>';
             foreach ($bucket_contents as $video) {
-                echo '<li>' . esc_html($video) . ' <a href="' . admin_url('admin-post.php?action=delete_video_from_s3&video=' . urlencode($video)) . '">Delete from S3</a></li>';
+                echo '<li>' . esc_html($video) . ' <a href="' . admin_url('admin-post.php?action=delete_video_from_s3&video=' . urlencode(strtolower($video))) . '">Delete from S3</a></li>';
             }
             echo '</ul>';
         } else {
@@ -128,7 +128,7 @@ function video_to_s3_dashboard() {
     echo '<form method="post" action="' . admin_url('admin-post.php') . '">';
     echo '<input type="hidden" name="action" value="upload_videos_to_s3">';
     foreach ($media_items as $item) {
-        $video_name = basename($item->guid);
+        $video_name = strtolower(basename($item->guid)); // Convert to lowercase
         if (!in_array($video_name, $existing_videos)) {
             echo '<input type="checkbox" name="selected_videos[]" value="' . $item->ID . '">' . esc_html($item->post_title) . '<br>';
         }
@@ -213,11 +213,8 @@ function video_to_s3_upload_videos() {
     try {
         $selected_videos = isset($_POST['selected_videos']) ? $_POST['selected_videos'] : null;
         video_to_s3_upload_videos_logic($selected_videos);
-
-        // Set a transient to inform the user about the upload
         set_transient('vts_upload_messages', ['[info]Upload process completed.'], 60);
-
-        // Redirect back to the dashboard
+        set_transient('vts_existing_videos', array_unique($existing_videos), 60 * 60 * 24); // Ensure this happens before redirect
         wp_redirect(admin_url('admin.php?page=video-to-s3'));
         exit;
     } catch (Exception $e) {

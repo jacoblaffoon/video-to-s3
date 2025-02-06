@@ -23,9 +23,9 @@ function video_to_s3_list_bucket_contents() {
 
         $videos_in_bucket = [];
         foreach ($objects as $object) {
-            $key = $object['Key'];
+            $key = strtolower($object['Key']); // Convert to lowercase
             // Only add to the list if it's not a log file
-            if (!str_starts_with($key, 'logs/') && !str_starts_with($key, 'AWSLogs/')) {
+            if (!str_starts_with($key, 'logs/') && !str_starts_with($key, 'awslogs/')) {
                 $videos_in_bucket[] = $key;
             }
         }
@@ -66,7 +66,7 @@ function video_to_s3_upload_videos_logic($selected_videos = null) {
 
     foreach ($videos as $video) {
         $file_path = str_replace(get_site_url(), ABSPATH, $video->guid);
-        $key = basename($file_path);
+        $key = strtolower(basename($file_path)); // Convert to lowercase
         
         if (file_exists($file_path)) {
             $file_size = filesize($file_path);
@@ -137,7 +137,7 @@ function video_to_s3_check_file_exists($bucket, $key, $s3) {
     try {
         $s3->headObject([
             'Bucket' => $bucket,
-            'Key'    => $key
+            'Key'    => $key // Since $key is already lowercased, we use it as is
         ]);
         return true; // File exists
     } catch (S3Exception $e) {
