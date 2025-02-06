@@ -39,7 +39,20 @@ function video_to_s3_dashboard() {
             $notice_type = strpos($message, '[error]') !== false ? 'error' : 'info';
             echo '<div class="notice notice-' . $notice_type . ' is-dismissible"><p>' . esc_html(str_replace(['[error]', '[info]'], '', $message)) . '</p></div>';
         }
-        delete_transient('vts_upload_messages'); // Clear the notices after displaying
+        delete_transient('vts_upload_messages');
+    }
+
+    // List contents of S3 bucket
+    $bucket_contents = video_to_s3_list_bucket_contents();
+    echo '<h2>Contents of S3 Bucket</h2>';
+    if (!empty($bucket_contents)) {
+        echo '<ul>';
+        foreach ($bucket_contents as $video) {
+            echo '<li>' . esc_html($video) . '</li>';
+        }
+        echo '</ul>';
+    } else {
+        echo '<p>No videos found in the S3 bucket.</p>';
     }
 
     // Form for AWS credentials
@@ -57,6 +70,37 @@ function video_to_s3_dashboard() {
     echo '<h3>Upload Videos to S3</h3>';
     echo '<p><a href="' . admin_url('admin-post.php?action=upload_videos_to_s3') . '" class="button">Upload Videos to S3</a></p>';
     echo '</div>';
+}
+
+function video_to_s3_list_bucket_contents() {
+    $aws_key = get_option('vts_aws_key');
+    $aws_secret = get_option('vts_aws_secret');
+    $bucket = get_option('vts_aws_bucket');
+    $region = get_option('vts_aws_region');
+
+    $s3 = new S3Client([
+        'version' => 'latest',
+        'region' => $region,
+        'credentials' => [
+            'key' => $aws_key,
+            'secret' => $aws_secret,
+        ]
+    ]);
+
+    try {
+        $objects = $s3->getIterator('ListObjects', [
+            'Bucket' => $bucket,
+        ]);
+
+        $videos_in_bucket = [];
+        foreach ($objects as $object) {
+            $videos_in_bucket[] = $object['Key'];
+        }
+        return $videos_in_bucket;
+    } catch (Exception $e) {
+        error_log("Error listing S3 bucket contents: " . $e->getMessage());
+        return []; // Return an empty array on failure
+    }
 }
 
 // Register settings
@@ -96,10 +140,12 @@ function video_to_s3_upload_videos() {
         wp_die(__('You do not have sufficient permissions to access this page.'));
     }
     
-    video_to_s3_upload_videos_logic(); // Call the function from includes/functions.php
+    video_to_s3_upload_videos_logic(); 
 
-    echo '<div class="wrap"><h1>Uploading Videos...</h1><p>Check your server logs for detailed output.</p></div>';
-    
+    // Set a transient to inform the user about the upload
+    set_transient('vts_upload_messages', ['[info]Upload process completed.'], 60);
+
+    // Redirect back to the dashboard
     wp_redirect(admin_url('admin.php?page=video-to-s3'));
     exit;
 }
