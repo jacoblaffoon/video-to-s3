@@ -75,7 +75,7 @@ function video_to_s3_dashboard() {
 
     <div id="logs" class="vts-tab-content" style="display:none;">
         <?php
-        // List logs in bucket (you might want to fetch these separately to avoid redundancy)
+        // List logs in bucket
         $logs = array_filter(video_to_s3_list_bucket_contents(), function($item) {
             return strpos($item, 'logs/') === 0 || strpos($item, 'AWSLogs/') === 0;
         });

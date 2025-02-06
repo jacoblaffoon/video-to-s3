@@ -62,6 +62,7 @@ function video_to_s3_upload_videos_logic($selected_videos = null) {
     $processed = 0;
     $errors = [];
     $skipped = 0;
+    $uploaded_videos = [];
 
     foreach ($videos as $video) {
         $file_path = str_replace(get_site_url(), ABSPATH, $video->guid);
@@ -85,6 +86,7 @@ function video_to_s3_upload_videos_logic($selected_videos = null) {
                         ]);
                         error_log("Successfully uploaded: " . $video->guid . " to S3");
                         $processed++;
+                        $uploaded_videos[] = $key; // Store the filename of uploaded videos
                     } catch (S3Exception $e) {
                         $errors[] = "Error uploading " . $video->guid . ": " . $e->getMessage();
                         error_log("Error uploading " . $video->guid . ": " . $e->getMessage());
@@ -99,6 +101,11 @@ function video_to_s3_upload_videos_logic($selected_videos = null) {
             error_log("File not found at path: " . $file_path);
         }
     }
+
+    // Store uploaded videos in a transient for later use
+    $existing_videos = get_transient('vts_existing_videos') ?: [];
+    $existing_videos = array_merge($existing_videos, $uploaded_videos);
+    set_transient('vts_existing_videos', array_unique($existing_videos), 60 * 60 * 24); // Keep for one day
 
     // Prepare messages for admin notices
     $messages = [];
