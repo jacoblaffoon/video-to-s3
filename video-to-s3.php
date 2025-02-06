@@ -14,7 +14,7 @@ define('VIDEO_TO_S3_PATH', plugin_dir_path(__FILE__));
 define('VIDEO_TO_S3_URL', plugin_dir_url(__FILE__));
 
 // Include necessary files
-require_once VIDEO_TO_S3_PATH . 'includes/aws-sdk/aws-autoloader.php';
+require_once VIDEO_TO_S3_PATH . 'vendor/autoload.php';
 require_once VIDEO_TO_S3_PATH . 'includes/functions.php';
 
 // Admin menu
@@ -33,19 +33,25 @@ function video_to_s3_dashboard() {
     echo '<div class="wrap">';
     echo '<h1>Video to S3 Dashboard</h1>';
     
-    // Form for AWS credentials (in production, use a more secure method like environment variables or an options page)
-    echo '<form method="post" action="">';
+    // Display any transient notices
+    if ($messages = get_transient('vts_upload_messages')) {
+        foreach ($messages as $message) {
+            $notice_type = strpos($message, '[error]') !== false ? 'error' : 'info';
+            echo '<div class="notice notice-' . $notice_type . ' is-dismissible"><p>' . esc_html(str_replace(['[error]', '[info]'], '', $message)) . '</p></div>';
+        }
+        delete_transient('vts_upload_messages'); // Clear the notices after displaying
+    }
+
+    // Form for AWS credentials
+    echo '<form method="post" action="options.php">';
     settings_fields('video_to_s3_options');
+    wp_nonce_field('update-aws-credentials', 'update_aws_credentials_nonce');
     do_settings_sections('video_to_s3');
     submit_button('Update AWS Credentials');
 
     // Check if form submitted and update options
-    if (isset($_POST['submit'])) {
-        update_option('vts_aws_key', sanitize_text_field($_POST['aws_key']));
-        update_option('vts_aws_secret', sanitize_text_field($_POST['aws_secret']));
-        update_option('vts_aws_bucket', sanitize_text_field($_POST['aws_bucket']));
-        update_option('vts_aws_region', sanitize_text_field($_POST['aws_region']));
-        echo '<p>Settings Updated!</p>';
+    if (isset($_POST['submit']) && wp_verify_nonce($_POST['update_aws_credentials_nonce'], 'update-aws-credentials')) {
+        echo '<p class="notice notice-success is-dismissible">Settings Updated!</p>';
     }
 
     echo '<h3>Upload Videos to S3</h3>';
@@ -70,10 +76,18 @@ function video_to_s3_register_settings() {
 }
 
 // Helper functions for settings fields
-function video_to_s3_aws_key_field() { echo '<input type="text" name="aws_key" value="' . esc_attr(get_option('vts_aws_key')) . '" />'; }
-function video_to_s3_aws_secret_field() { echo '<input type="text" name="aws_secret" value="' . esc_attr(get_option('vts_aws_secret')) . '" />'; }
-function video_to_s3_aws_bucket_field() { echo '<input type="text" name="aws_bucket" value="' . esc_attr(get_option('vts_aws_bucket')) . '" />'; }
-function video_to_s3_aws_region_field() { echo '<input type="text" name="aws_region" value="' . esc_attr(get_option('vts_aws_region')) . '" />'; }
+function video_to_s3_aws_key_field() { 
+    echo '<input type="text" name="vts_aws_key" value="' . esc_attr(get_option('vts_aws_key')) . '" />'; 
+}
+function video_to_s3_aws_secret_field() { 
+    echo '<input type="text" name="vts_aws_secret" value="' . esc_attr(get_option('vts_aws_secret')) . '" />'; 
+}
+function video_to_s3_aws_bucket_field() { 
+    echo '<input type="text" name="vts_aws_bucket" value="' . esc_attr(get_option('vts_aws_bucket')) . '" />'; 
+}
+function video_to_s3_aws_region_field() { 
+    echo '<input type="text" name="vts_aws_region" value="' . esc_attr(get_option('vts_aws_region')) . '" />'; 
+}
 
 // Handle upload action
 add_action('admin_post_upload_videos_to_s3', 'video_to_s3_upload_videos');
