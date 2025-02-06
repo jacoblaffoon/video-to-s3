@@ -137,9 +137,9 @@ function video_to_s3_check_file_exists($bucket, $key, $s3) {
         if ($e->getAwsErrorCode() === 'NotFound') {
             return false; // File does not exist
         }
-        // If it's a different error, you might want to handle or log it
+        // Log other errors for debugging purposes
         error_log("Error checking file existence: " . $e->getMessage());
-        return false;
+        return false; // Return false for other exceptions as well
     }
 }
 
