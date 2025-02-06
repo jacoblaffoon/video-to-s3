@@ -71,7 +71,7 @@ function video_to_s3_upload_videos_logic($selected_videos = null) {
             $file_size = filesize($file_path);
             error_log("Checking video: " . $video->guid . " (Size: " . $file_size . " bytes)");
             
-            if (!video_to_s3_check_file_exists($bucket, $key)) {
+            if (!video_to_s3_check_file_exists($bucket, $key, $s3)) {
                 $content = file_get_contents($file_path);
                 if ($content === false) {
                     $errors[] = "Could not read file for upload: " . $video->guid;
@@ -126,9 +126,7 @@ function video_to_s3_upload_videos_logic($selected_videos = null) {
     error_log(sprintf("Total videos processed: %d, Skipped: %d, Total errors: %d", $processed, $skipped, count($errors)));
 }
 
-function video_to_s3_check_file_exists($bucket, $key) {
-    global $s3;
-    
+function video_to_s3_check_file_exists($bucket, $key, $s3) {
     try {
         $s3->headObject([
             'Bucket' => $bucket,
