@@ -1,6 +1,37 @@
 <?php
 use Aws\S3\S3Client;
 
+function video_to_s3_list_bucket_contents() {
+    $aws_key = get_option('vts_aws_key');
+    $aws_secret = get_option('vts_aws_secret');
+    $bucket = get_option('vts_aws_bucket');
+    $region = get_option('vts_aws_region');
+
+    $s3 = new S3Client([
+        'version' => 'latest',
+        'region' => $region,
+        'credentials' => [
+            'key' => $aws_key,
+            'secret' => $aws_secret,
+        ]
+    ]);
+
+    try {
+        $objects = $s3->getIterator('ListObjects', [
+            'Bucket' => $bucket,
+        ]);
+
+        $videos_in_bucket = [];
+        foreach ($objects as $object) {
+            $videos_in_bucket[] = $object['Key'];
+        }
+        return $videos_in_bucket;
+    } catch (Exception $e) {
+        error_log("Error listing S3 bucket contents: " . $e->getMessage());
+        return []; // Return an empty array on failure
+    }
+}
+
 function video_to_s3_upload_videos_logic() {
     // Retrieve AWS credentials from plugin settings
     $aws_key = get_option('vts_aws_key');
