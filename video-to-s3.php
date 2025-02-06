@@ -81,11 +81,11 @@ function video_to_s3_upload_videos() {
     if (!current_user_can('manage_options')) {
         wp_die(__('You do not have sufficient permissions to access this page.'));
     }
+    
+    video_to_s3_upload_videos_logic(); // Call the function from includes/functions.php
 
-    // Here would be the logic to upload videos, similar to the script in your previous query
     echo '<div class="wrap"><h1>Uploading Videos...</h1><p>Check your server logs for detailed output.</p></div>';
     
-    // Redirect back to the dashboard after the process (you'd want to show results here)
     wp_redirect(admin_url('admin.php?page=video-to-s3'));
     exit;
 }
