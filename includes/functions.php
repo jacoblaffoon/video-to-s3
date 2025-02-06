@@ -59,27 +59,30 @@ function video_to_s3_upload_videos_logic($selected_videos = null) {
     $processed = 0;
     $errors = [];
 
-    // Loop through videos for upload
     foreach ($videos as $video) {
         $file_path = str_replace(get_site_url(), ABSPATH, $video->guid);
         
-        // Check if file exists
         if (file_exists($file_path)) {
             $file_size = filesize($file_path);
             error_log("Attempting to upload video: " . $video->guid . " (Size: " . $file_size . " bytes)");
             
-            try {
-                $result = $s3->putObject([
-                    'Bucket' => $bucket,
-                    'Key'    => basename($file_path),
-                    'SourceFile' => $file_path,
-                    'ACL'    => 'public-read'
-                ]);
-                error_log("Successfully uploaded: " . $video->guid . " to S3");
-                $processed++;
-            } catch (Exception $e) {
-                $errors[] = "Error uploading " . $video->guid . ": " . $e->getMessage();
-                error_log("Error uploading " . $video->guid . ": " . $e->getMessage());
+            $content = file_get_contents($file_path);
+            if ($content === false) {
+                $errors[] = "Could not read file for upload: " . $video->guid;
+                error_log("Failed to read file: " . $video->guid);
+            } else {
+                try {
+                    $result = $s3->putObject([
+                        'Bucket' => $bucket,
+                        'Key'    => basename($file_path),
+                        'Body'   => $content
+                    ]);
+                    error_log("Successfully uploaded: " . $video->guid . " to S3");
+                    $processed++;
+                } catch (S3Exception $e) {
+                    $errors[] = "Error uploading " . $video->guid . ": " . $e->getMessage();
+                    error_log("Error uploading " . $video->guid . ": " . $e->getMessage());
+                }
             }
         } else {
             $errors[] = "File not found at path: " . $file_path;
