@@ -13,6 +13,8 @@ if (!defined('ABSPATH')) exit;
 define('VIDEO_TO_S3_PATH', plugin_dir_path(__FILE__));
 define('VIDEO_TO_S3_URL', plugin_dir_url(__FILE__));
 
+use Aws\S3\S3Client;
+
 // Include necessary files
 require_once VIDEO_TO_S3_PATH . 'vendor/autoload.php';
 require_once VIDEO_TO_S3_PATH . 'includes/functions.php';
