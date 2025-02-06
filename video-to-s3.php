@@ -176,9 +176,6 @@ function video_to_s3_register_settings() {
 function video_to_s3_aws_key_field() { 
     echo '<input type="text" name="vts_aws_key" value="' . esc_attr(get_option('vts_aws_key')) . '" />'; 
 }
-function video_to_s3_aws_secret_field() { 
-    echo '<input type="text" name="vts_aws_secret" value="' . esc_attr(get_option('vts_aws_secret')) . '" />'; 
-}
 function video_to_s3_aws_bucket_field() { 
     echo '<input type="text" name="vts_aws_bucket" value="' . esc_attr(get_option('vts_aws_bucket')) . '" />'; 
 }
