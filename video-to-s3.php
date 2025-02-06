@@ -210,15 +210,23 @@ function video_to_s3_upload_videos() {
         wp_die(__('You do not have sufficient permissions to access this page.'));
     }
     
-    $selected_videos = isset($_POST['selected_videos']) ? $_POST['selected_videos'] : null;
-    video_to_s3_upload_videos_logic($selected_videos);
+    try {
+        $selected_videos = isset($_POST['selected_videos']) ? $_POST['selected_videos'] : null;
+        video_to_s3_upload_videos_logic($selected_videos);
 
-    // Set a transient to inform the user about the upload
-    set_transient('vts_upload_messages', ['[info]Upload process completed.'], 60);
+        // Set a transient to inform the user about the upload
+        set_transient('vts_upload_messages', ['[info]Upload process completed.'], 60);
 
-    // Redirect back to the dashboard
-    wp_redirect(admin_url('admin.php?page=video-to-s3'));
-    exit;
+        // Redirect back to the dashboard
+        wp_redirect(admin_url('admin.php?page=video-to-s3'));
+        exit;
+    } catch (Exception $e) {
+        // Log the error, but try to continue or at least handle gracefully
+        error_log("Error in upload process: " . $e->getMessage());
+        set_transient('vts_upload_messages', ['[error]An error occurred during upload: ' . $e->getMessage()], 60);
+        wp_redirect(admin_url('admin.php?page=video-to-s3'));
+        exit;
+    }
 }
 
 // Add function to handle video deletion

@@ -136,10 +136,14 @@ function video_to_s3_check_file_exists($bucket, $key, $s3) {
     } catch (S3Exception $e) {
         if ($e->getAwsErrorCode() === 'NotFound') {
             return false; // File does not exist
+        } else {
+            error_log("Unexpected error checking file existence: " . $e->getMessage());
+            return false; // Return false for other exceptions as well
         }
-        // Log other errors for debugging purposes
-        error_log("Error checking file existence: " . $e->getMessage());
-        return false; // Return false for other exceptions as well
+    } catch (Exception $e) {
+        // Catch any other unexpected exceptions
+        error_log("General error checking file existence: " . $e->getMessage());
+        return false;
     }
 }
 
