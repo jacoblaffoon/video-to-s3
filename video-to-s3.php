@@ -42,19 +42,66 @@ function video_to_s3_dashboard() {
         delete_transient('vts_upload_messages');
     }
 
-    // List contents of S3 bucket
-    $bucket_contents = video_to_s3_list_bucket_contents();
-    echo '<h2>Contents of S3 Bucket</h2>';
-    if (!empty($bucket_contents)) {
-        echo '<ul>';
-        foreach ($bucket_contents as $video) {
-            echo '<li>' . esc_html($video) . '</li>';
-        }
-        echo '</ul>';
-    } else {
-        echo '<p>No videos found in the S3 bucket.</p>';
-    }
+    // Tabs for different content types
+    ?>
+    <h2 class="nav-tab-wrapper">
+        <a href="#videos" class="nav-tab nav-tab-active">Videos</a>
+        <a href="#logs" class="nav-tab">Logs</a>
+    </h2>
 
+    <div id="videos" class="vts-tab-content">
+        <?php
+        // List videos in bucket
+        $bucket_contents = video_to_s3_list_bucket_contents();
+        $videos = array_filter($bucket_contents, function($item) {
+            return strpos($item, '.mp4') !== false; // Adjust extension if needed
+        });
+
+        if (!empty($videos)) {
+            echo '<ul>';
+            foreach ($videos as $video) {
+                echo '<li>' . esc_html($video) . '</li>';
+            }
+            echo '</ul>';
+        } else {
+            echo '<p>No videos found in the S3 bucket.</p>';
+        }
+        ?>
+    </div>
+
+    <div id="logs" class="vts-tab-content" style="display:none;">
+        <?php
+        // List logs in bucket
+        $logs = array_filter($bucket_contents, function($item) {
+            return strpos($item, 'logs/') === 0; // Assuming logs start with 'logs/'
+        });
+
+        if (!empty($logs)) {
+            echo '<ul>';
+            foreach ($logs as $log) {
+                echo '<li>' . esc_html($log) . '</li>';
+            }
+            echo '</ul>';
+        } else {
+            echo '<p>No logs found in the S3 bucket.</p>';
+        }
+        ?>
+    </div>
+
+    <script type="text/javascript">
+    jQuery(document).ready(function($) {
+        $('.nav-tab-wrapper a').click(function(e) {
+            e.preventDefault();
+            var tab_id = $(this).attr('href');
+            $('.vts-tab-content').hide();
+            $('.nav-tab').removeClass('nav-tab-active');
+            $(this).addClass('nav-tab-active');
+            $(tab_id).show();
+        });
+    });
+    </script>
+
+    <?php
     // Form for AWS credentials
     echo '<form method="post" action="options.php">';
     settings_fields('video_to_s3_options');
