@@ -38,7 +38,6 @@ function video_to_s3_upload_videos_logic($selected_videos = null) {
     $bucket = get_option('vts_aws_bucket');
     $region = get_option('vts_aws_region');
 
-    // Initialize S3 client
     $s3 = new S3Client([
         'version' => 'latest',
         'region' => $region,
@@ -57,51 +56,42 @@ function video_to_s3_upload_videos_logic($selected_videos = null) {
     }
     $videos = $wpdb->get_results($query);
 
-    $batch_size = 10; // Number of videos to process in one batch
-    $total_videos = count($videos);
     $processed = 0;
     $errors = [];
 
-    $start_time = microtime(true);
-
-    foreach (array_chunk($videos, $batch_size) as $batch) {
-        foreach ($batch as $video) {
-            $file_path = str_replace(get_site_url(), ABSPATH, $video->guid);
+    // Loop through videos for upload
+    foreach ($videos as $video) {
+        $file_path = str_replace(get_site_url(), ABSPATH, $video->guid);
+        
+        // Check if file exists
+        if (file_exists($file_path)) {
+            $file_size = filesize($file_path);
+            error_log("Attempting to upload video: " . $video->guid . " (Size: " . $file_size . " bytes)");
             
-            if (file_exists($file_path)) {
-                try {
-                    $result = $s3->putObject([
-                        'Bucket' => $bucket,
-                        'Key'    => basename($file_path),
-                        'SourceFile' => $file_path,
-                        'ACL'    => 'public-read'
-                    ]);
-                    error_log("Uploaded: " . $video->guid . " to S3");
-                    $processed++;
-                } catch (Exception $e) {
-                    $errors[] = "Error uploading " . $video->guid . ": " . $e->getMessage();
-                    error_log("Error uploading " . $video->guid . ": " . $e->getMessage());
-                }
-            } else {
-                $errors[] = "File not found: " . $file_path;
-                error_log("File not found: " . $file_path);
+            try {
+                $result = $s3->putObject([
+                    'Bucket' => $bucket,
+                    'Key'    => basename($file_path),
+                    'SourceFile' => $file_path,
+                    'ACL'    => 'public-read'
+                ]);
+                error_log("Successfully uploaded: " . $video->guid . " to S3");
+                $processed++;
+            } catch (Exception $e) {
+                $errors[] = "Error uploading " . $video->guid . ": " . $e->getMessage();
+                error_log("Error uploading " . $video->guid . ": " . $e->getMessage());
             }
-
-            // Check if script execution time is close to PHP's max execution time
-            if ((microtime(true) - $start_time) > (ini_get('max_execution_time') - 5)) {
-                break 2; // Exit both loops
-            }
+        } else {
+            $errors[] = "File not found at path: " . $file_path;
+            error_log("File not found at path: " . $file_path);
         }
-
-        // If the script is about to exceed execution time, we'll pause here. 
-        // In a real-world scenario, you might want to implement a cron job or use AJAX for this.
     }
 
     // Prepare messages for admin notices
     $messages = [];
 
     if ($processed > 0) {
-        $messages[] = '[info]Successfully uploaded ' . $processed . ' videos out of ' . $total_videos . '.';
+        $messages[] = '[info]Successfully uploaded ' . $processed . ' videos.';
     }
 
     if (!empty($errors)) {
@@ -110,8 +100,6 @@ function video_to_s3_upload_videos_logic($selected_videos = null) {
             implode(', ', array_slice($errors, 0, 3))
         );
         $messages[] = $error_message;
-    } else if ($processed < $total_videos) {
-        $messages[] = '[info]Processing stopped to avoid script timeout. Please run again to continue uploading.';
     }
 
     // Store messages in transients for display in the admin area

@@ -119,7 +119,12 @@ function video_to_s3_dashboard() {
     echo '<p><a href="' . admin_url('admin-post.php?action=upload_videos_to_s3') . '" class="button">Upload All Videos to S3</a></p>';
 
     // Video selection form
-    $media_items = get_posts(array('post_type' => 'attachment', 'post_mime_type' => 'video'));
+    $media_items = get_posts(array(
+        'post_type' => 'attachment',
+        'post_mime_type' => 'video',  // This should select only video files
+        'posts_per_page' => -1  // Retrieve all video attachments
+    ));
+    
     echo '<form method="post" action="' . admin_url('admin-post.php') . '">';
     echo '<input type="hidden" name="action" value="upload_videos_to_s3">';
     foreach ($media_items as $item) {
