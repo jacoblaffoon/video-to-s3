@@ -119,6 +119,43 @@ function video_to_s3_dashboard() {
     echo '</div>';
 }
 
+// Helper function for AWS Secret Key field with show/hide functionality
+function video_to_s3_aws_secret_field() {
+    $secret_key = get_option('vts_aws_secret');
+    ?>
+    <div class="vts-secret-key-wrapper">
+        <input type="password" id="vts_aws_secret" name="vts_aws_secret" value="<?php echo esc_attr($secret_key); ?>" />
+        <button type="button" class="button" id="vts_toggle_secret">Show</button>
+    </div>
+    <script type="text/javascript">
+    jQuery(document).ready(function($) {
+        $('#vts_toggle_secret').on('click', function() {
+            var input = $('#vts_aws_secret');
+            if (input.attr('type') === 'password') {
+                input.attr('type', 'text');
+                $(this).text('Hide');
+            } else {
+                input.attr('type', 'password');
+                $(this).text('Show');
+            }
+        });
+    });
+    </script>
+    <?php
+}
+
+function video_to_s3_admin_styles() {
+    echo '<style>
+        .vts-secret-key-wrapper {
+            display: inline-block;
+        }
+        .vts-secret-key-wrapper button {
+            margin-left: 10px;
+        }
+    </style>';
+}
+add_action('admin_head', 'video_to_s3_admin_styles');
+
 // Register settings
 add_action('admin_init', 'video_to_s3_register_settings');
 function video_to_s3_register_settings() {
