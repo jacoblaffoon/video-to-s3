@@ -24,10 +24,15 @@ function video_to_s3_add_admin_menu() {
     add_menu_page('Video to S3', 'Video to S3', 'manage_options', 'video-to-s3', 'video_to_s3_dashboard');
 }
 
+
 // Dashboard page content
 function video_to_s3_dashboard() {
     if (!current_user_can('manage_options')) {
         wp_die(__('You do not have sufficient permissions to access this page.'));
+    }
+
+    if (isset($_GET['confirm_delete'])) {
+        echo '<div class="notice notice-warning"><p>Are you sure you want to delete ' . esc_html($_GET['confirm_delete']) . '? <a href="' . admin_url('admin-post.php?action=delete_video_from_s3&video=' . urlencode($_GET['confirm_delete']) . '&confirm=yes') . '">Yes</a> | <a href="' . admin_url('admin.php?page=video-to-s3') . '">No</a></p></div>';
     }
 
     echo '<div class="wrap">';
@@ -53,14 +58,11 @@ function video_to_s3_dashboard() {
         <?php
         // List videos in bucket
         $bucket_contents = video_to_s3_list_bucket_contents();
-        $videos = array_filter($bucket_contents, function($item) {
-            return strpos($item, '.mp4') !== false; // Adjust extension if needed
-        });
-
-        if (!empty($videos)) {
+        echo '<h2>Existing Videos in S3 Bucket</h2>';
+        if (!empty($bucket_contents)) {
             echo '<ul>';
-            foreach ($videos as $video) {
-                echo '<li>' . esc_html($video) . '</li>';
+            foreach ($bucket_contents as $video) {
+                echo '<li>' . esc_html($video) . ' <a href="' . admin_url('admin-post.php?action=delete_video_from_s3&video=' . urlencode($video)) . '">Delete from S3</a></li>';
             }
             echo '</ul>';
         } else {
@@ -71,9 +73,9 @@ function video_to_s3_dashboard() {
 
     <div id="logs" class="vts-tab-content" style="display:none;">
         <?php
-        // List logs in bucket
-        $logs = array_filter($bucket_contents, function($item) {
-            return strpos($item, 'logs/') === 0; // Assuming logs start with 'logs/'
+        // List logs in bucket (you might want to fetch these separately to avoid redundancy)
+        $logs = array_filter(video_to_s3_list_bucket_contents(), function($item) {
+            return strpos($item, 'logs/') === 0 || strpos($item, 'AWSLogs/') === 0;
         });
 
         if (!empty($logs)) {
@@ -115,33 +117,19 @@ function video_to_s3_dashboard() {
     }
     echo '</form>';
 
-    // Before the upload form or in the "Videos" tab
-    $existing_files = video_to_s3_list_bucket_contents();
-    echo '<h3>Existing Videos in S3 Bucket</h3>';
-    if (!empty($existing_files)) {
-        echo '<ul>';
-        foreach ($existing_files as $file) {
-            echo '<li>' . esc_html($file) . '</li>';
-        }
-        echo '</ul>';
-    } else {
-        echo '<p>No videos found in the S3 bucket.</p>';
-    }
-
     echo '<h3>Upload Videos to S3</h3>';
     echo '<p><a href="' . admin_url('admin-post.php?action=upload_videos_to_s3') . '" class="button">Upload All Videos to S3</a></p>';
 
     // Video selection form
-    $media_items = get_posts(array(
-        'post_type' => 'attachment',
-        'post_mime_type' => 'video',  // This should select only video files
-        'posts_per_page' => -1  // Retrieve all video attachments
-    ));
-    
+    $media_items = get_posts(array('post_type' => 'attachment', 'post_mime_type' => 'video'));
+    $existing_videos = get_transient('vts_existing_videos') ?: [];
     echo '<form method="post" action="' . admin_url('admin-post.php') . '">';
     echo '<input type="hidden" name="action" value="upload_videos_to_s3">';
     foreach ($media_items as $item) {
-        echo '<input type="checkbox" name="selected_videos[]" value="' . $item->ID . '">' . esc_html($item->post_title) . '<br>';
+        $video_name = basename($item->guid);
+        if (!in_array($video_name, $existing_videos)) {
+            echo '<input type="checkbox" name="selected_videos[]" value="' . $item->ID . '">' . esc_html($item->post_title) . '<br>';
+        }
     }
     echo '<input type="submit" value="Upload Selected Videos">';
     echo '</form>';
@@ -227,6 +215,51 @@ function video_to_s3_upload_videos() {
     set_transient('vts_upload_messages', ['[info]Upload process completed.'], 60);
 
     // Redirect back to the dashboard
+    wp_redirect(admin_url('admin.php?page=video-to-s3'));
+    exit;
+}
+
+// Add function to handle video deletion
+add_action('admin_post_delete_video_from_s3', 'video_to_s3_delete_video');
+function video_to_s3_delete_video() {
+    if (!current_user_can('manage_options')) {
+        wp_die(__('You do not have sufficient permissions to access this page.'));
+    }
+
+    $video = isset($_GET['video']) ? sanitize_text_field($_GET['video']) : '';
+
+    if ($video) {
+        if (isset($_GET['confirm']) && $_GET['confirm'] == 'yes') {
+            $aws_key = get_option('vts_aws_key');
+            $aws_secret = get_option('vts_aws_secret');
+            $bucket = get_option('vts_aws_bucket');
+            $region = get_option('vts_aws_region');
+
+            $s3 = new S3Client([
+                'version' => 'latest',
+                'region' => $region,
+                'credentials' => [
+                    'key' => $aws_key,
+                    'secret' => $aws_secret,
+                ]
+            ]);
+
+            try {
+                $s3->deleteObject([
+                    'Bucket' => $bucket,
+                    'Key'    => $video
+                ]);
+                set_transient('vts_upload_messages', ['[info]Video ' . $video . ' was deleted from S3.'], 60);
+            } catch (S3Exception $e) {
+                set_transient('vts_upload_messages', ['[error]Failed to delete video ' . $video . ': ' . $e->getMessage()], 60);
+            }
+        } else {
+            // Redirect back with a confirmation prompt
+            wp_redirect(admin_url('admin.php?page=video-to-s3&confirm_delete=' . urlencode($video)));
+            exit;
+        }
+    }
+
     wp_redirect(admin_url('admin.php?page=video-to-s3'));
     exit;
 }

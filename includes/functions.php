@@ -23,7 +23,11 @@ function video_to_s3_list_bucket_contents() {
 
         $videos_in_bucket = [];
         foreach ($objects as $object) {
-            $videos_in_bucket[] = $object['Key'];
+            $key = $object['Key'];
+            // Only add to the list if it's not a log file
+            if (!str_starts_with($key, 'logs/') && !str_starts_with($key, 'AWSLogs/')) {
+                $videos_in_bucket[] = $key;
+            }
         }
         return $videos_in_bucket;
     } catch (Exception $e) {
