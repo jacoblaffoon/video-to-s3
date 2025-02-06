@@ -213,8 +213,15 @@ function video_to_s3_upload_videos() {
     try {
         $selected_videos = isset($_POST['selected_videos']) ? $_POST['selected_videos'] : null;
         video_to_s3_upload_videos_logic($selected_videos);
+
+        // Set a transient to inform the user about the upload
         set_transient('vts_upload_messages', ['[info]Upload process completed.'], 60);
-        set_transient('vts_existing_videos', array_unique($existing_videos), 60 * 60 * 24); // Ensure this happens before redirect
+
+        // Ensure $existing_videos is always an array before merging
+        $existing_videos = get_transient('vts_existing_videos') ?: [];
+        set_transient('vts_existing_videos', array_unique($existing_videos), 60 * 60 * 24); // Keep for one day
+
+        // Redirect back to the dashboard
         wp_redirect(admin_url('admin.php?page=video-to-s3'));
         exit;
     } catch (Exception $e) {
