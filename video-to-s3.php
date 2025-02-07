@@ -199,6 +199,43 @@ function display_s3_url_column_content($column_name, $post_id) {
     }
 }
 
+// Modify the attachment details view to show S3 or Local URL
+add_filter('attachment_fields_to_edit', 'modify_attachment_details_for_s3_or_local', 10, 2);
+function modify_attachment_details_for_s3_or_local($form_fields, $post) {
+    $metadata = wp_get_attachment_metadata($post->ID);
+    $bucket = get_option('vts_aws_bucket');
+    $region = get_option('vts_aws_region');
+    
+    if (is_array($metadata) && isset($metadata['file'])) {
+        // Assume if 'file' exists in metadata, it's stored in S3 (or at least should be)
+        $s3_url = "https://{$bucket}.s3.{$region}.amazonaws.com/{$metadata['file']}";
+        $display_url = esc_url($s3_url);
+        $label = 'S3 URL';
+    } else {
+        // If no metadata or 'file' not set, use the local URL
+        $local_url = wp_get_attachment_url($post->ID);
+        $display_url = esc_url($local_url);
+        $label = 'Local URL';
+    }
+    
+    // Replace or add the URL field
+    if (isset($form_fields['url'])) {
+        $form_fields['url']['value'] = $display_url;
+        $form_fields['url']['label'] = $label;
+        $form_fields['url']['input'] = 'html';
+        $form_fields['url']['html'] = '<a href="' . $display_url . '" target="_blank">' . $display_url . '</a>';
+    } else {
+        $form_fields['url'] = array(
+            'label' => $label,
+            'input' => 'html',
+            'html'  => '<a href="' . $display_url . '" target="_blank">' . $display_url . '</a>',
+            'value' => $display_url
+        );
+    }
+    
+    return $form_fields;
+}
+
 // Register settings
 add_action('admin_init', 'video_to_s3_register_settings');
 function video_to_s3_register_settings() {
