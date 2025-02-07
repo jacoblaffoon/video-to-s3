@@ -176,6 +176,29 @@ function video_to_s3_admin_styles() {
 }
 add_action('admin_head', 'video_to_s3_admin_styles');
 
+// Add a new column to the media library list view
+add_filter('manage_media_columns', 'add_s3_url_column');
+function add_s3_url_column($columns) {
+    $columns['s3_url'] = __('S3 URL');
+    return $columns;
+}
+
+// Display S3 URL in the new column
+add_action('manage_media_custom_column', 'display_s3_url_column_content', 10, 2);
+function display_s3_url_column_content($column_name, $post_id) {
+    if ('s3_url' === $column_name) {
+        $metadata = wp_get_attachment_metadata($post_id);
+        if (is_array($metadata) && isset($metadata['file'])) {
+            $bucket = get_option('vts_aws_bucket');
+            $region = get_option('vts_aws_region');
+            $s3_url = "https://{$bucket}.s3.{$region}.amazonaws.com/{$metadata['file']}";
+            echo esc_url($s3_url);
+        } else {
+            echo 'No S3 URL';
+        }
+    }
+}
+
 // Register settings
 add_action('admin_init', 'video_to_s3_register_settings');
 function video_to_s3_register_settings() {
