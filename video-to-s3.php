@@ -67,18 +67,19 @@ function video_to_s3_dashboard() {
         if (!empty($bucket_contents)) {
             echo '<ul>';
             foreach ($bucket_contents as $video) {
-                echo '<li>' . esc_html($video) . ' <a href="' . admin_url('admin-post.php?action=delete_video_from_s3&video=' . urlencode(strtolower($video))) . '">Delete from S3</a>';
+                echo '<li>';
+                echo '<strong>' . esc_html($video) . '</strong> ';
+                echo '<a href="' . admin_url('admin-post.php?action=delete_video_from_s3&video=' . urlencode(strtolower($video))) . '">Delete from S3</a> ';
                 
                 // Check metadata for this video
                 $video_id = video_to_s3_get_video_id_by_filename($video);
                 if ($video_id) {
                     $metadata = wp_get_attachment_metadata($video_id);
-                    echo ' - <strong>Metadata:</strong> ';
                     if (is_array($metadata) && isset($metadata['file'])) {
-                        echo 'File: ' . esc_html($metadata['file']);
+                        echo '<span class="metadata-status">Metadata: <em>File: ' . esc_html($metadata['file']) . '</em></span>';
                     } else {
-                        echo 'Metadata not found or not updated for S3. ';
-                        // Optionally, provide an update button here
+                        echo '<span class="metadata-status">Metadata: <em>Not found or not updated for S3</em></span>';
+                        // Show update form
                         echo '<form method="post" action="' . admin_url('admin-post.php') . '">';
                         echo '<input type="hidden" name="action" value="update_video_metadata">';
                         echo '<input type="hidden" name="video_id" value="' . esc_attr($video_id) . '">';
@@ -235,6 +236,16 @@ function video_to_s3_admin_styles() {
         }
         .vts-secret-key-wrapper button {
             margin-left: 10px;
+        }
+        .metadata-status {
+            margin-left: 10px;
+            font-style: italic;
+        }
+        .metadata-status em {
+            color: #888;
+        }
+        li strong {
+            margin-right: 5px;
         }
     </style>';
 }
