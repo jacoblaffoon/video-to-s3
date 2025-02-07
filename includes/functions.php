@@ -276,17 +276,24 @@ function video_to_s3_upload_single_video($video_id, $file_path) {
             'SourceFile' => $file_path
         ]);
 
-        // Update attachment metadata
+        // Here's where we update the metadata
         $new_url = "https://{$bucket}.s3.{$region}.amazonaws.com/{$key}";
-        update_attached_file($video_id, $new_url); // This updates the file path in attachment meta
+        update_attached_file($video_id, $new_url); 
 
-        // Update attachment metadata to reflect new location
+        // Start of the new metadata update process
         $metadata = wp_get_attachment_metadata($video_id);
         if (is_array($metadata)) {
             $metadata['file'] = $key;
+            if (isset($metadata['sizes'])) {
+                foreach ($metadata['sizes'] as &$size) {
+                    if (isset($size['url'])) {
+                        $size['url'] = str_replace(wp_get_upload_dir()['baseurl'], $new_url, $size['url']);
+                    }
+                }
+            }
             wp_update_attachment_metadata($video_id, $metadata);
         } else {
-            // If metadata doesn't exist, create it. This might happen for very old uploads or if something went wrong
+            // If metadata doesn't exist, create it with the new file name
             wp_update_attachment_metadata($video_id, array('file' => $key));
         }
 
