@@ -183,13 +183,20 @@ function video_to_s3_update_video_metadata() {
     $filename = isset($_POST['filename']) ? sanitize_file_name($_POST['filename']) : '';
 
     if ($video_id && $filename) {
-        $metadata = array(
-            'file' => $filename,
-        );
-        wp_update_attachment_metadata($video_id, $metadata);
-        set_transient('vts_upload_messages', ['[info]Metadata Updated for ' . $filename], 60);
+        try {
+            $metadata = array(
+                'file' => $filename,
+            );
+            wp_update_attachment_metadata($video_id, $metadata);
+            set_transient('vts_upload_messages', ['[info]Metadata Updated for ' . $filename], 60);
+            error_log("Metadata updated successfully for video ID: " . $video_id);
+        } catch (Exception $e) {
+            error_log("Error updating metadata for video ID: " . $video_id . " - " . $e->getMessage());
+            set_transient('vts_upload_messages', ['[error]Failed to update metadata: ' . $e->getMessage()], 60);
+        }
     } else {
-        set_transient('vts_upload_messages', ['[error]Failed to update metadata.'], 60);
+        error_log("Failed to update metadata due to missing video ID or filename.");
+        set_transient('vts_upload_messages', ['[error]Failed to update metadata. Missing video ID or filename.'], 60);
     }
 
     wp_redirect(admin_url('admin.php?page=video-to-s3'));
