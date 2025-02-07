@@ -25,15 +25,265 @@ add_action('admin_menu', 'video_to_s3_add_admin_menu');
 // Add a handler for the metadata update action
 add_action('admin_post_update_video_metadata', 'video_to_s3_update_video_metadata');
 
-
 function video_to_s3_add_admin_menu() {
     add_menu_page('Video to S3', 'Video to S3', 'manage_options', 'video-to-s3', 'video_to_s3_dashboard');
 }
 
+// Dashboard page content
+function video_to_s3_dashboard() {
+    if (!current_user_can('manage_options')) {
+        wp_die(__('You do not have sufficient permissions to access this page.'));
+    }
+
+    if (isset($_GET['confirm_delete'])) {
+        echo '<div class="notice notice-warning"><p>Are you sure you want to delete ' . esc_html($_GET['confirm_delete']) . '? <a href="' . admin_url('admin-post.php?action=delete_video_from_s3&video=' . urlencode($_GET['confirm_delete']) . '&confirm=yes') . '">Yes</a> | <a href="' . admin_url('admin.php?page=video-to-s3') . '">No</a></p></div>';
+    }
+
+    echo '<div class="wrap">';
+    echo '<h1>Video to S3 Dashboard</h1>';
+    
+    // Display any transient notices
+    if ($messages = get_transient('vts_upload_messages')) {
+        foreach ($messages as $message) {
+            $notice_type = strpos($message, '[error]') !== false ? 'error' : 'info';
+            echo '<div class="notice notice-' . $notice_type . ' is-dismissible"><p>' . esc_html(str_replace(['[error]', '[info]'], '', $message)) . '</p></div>';
+        }
+        delete_transient('vts_upload_messages');
+    }
+
+    // Tabs for different content types
+    ?>
+    <h2 class="nav-tab-wrapper">
+        <a href="#videos" class="nav-tab nav-tab-active">Videos</a>
+        <a href="#logs" class="nav-tab">Logs</a>
+    </h2>
+
+    <div id="videos" class="vts-tab-content">
+        <?php
+        // List videos in bucket
+        $bucket_contents = video_to_s3_list_bucket_contents();
+        echo '<h2>Existing Videos in S3 Bucket</h2>';
+        
+        if (!empty($bucket_contents)) {
+            // Add 'Update All Metadata' button
+            echo '<form method="post" action="' . admin_url('admin-post.php') . '">';
+            echo '<input type="hidden" name="action" value="update_all_metadata">';
+            wp_nonce_field('update_all_metadata_nonce', 'update_all_metadata_nonce');
+            echo '<input type="submit" class="button" value="Update All Metadata">';
+            echo '</form>';
+
+            echo '<div class="video-list">';
+            foreach ($bucket_contents as $video) {
+                echo '<div class="video-item-row">';
+                echo '<div class="video-item">';
+                echo '<strong>' . esc_html($video) . '</strong> ';
+                echo '<a href="' . admin_url('admin-post.php?action=delete_video_from_s3&video=' . urlencode(strtolower($video))) . '">Delete from S3</a>';
+                
+                $video_id = video_to_s3_get_video_id_by_filename($video);
+                if ($video_id) {
+                    $metadata = wp_get_attachment_metadata($video_id);
+                    echo '<div class="metadata-status">';
+                    if (is_array($metadata) && isset($metadata['file'])) {
+                        echo 'Metadata: <em>File: ' . esc_html($metadata['file']) . '</em>';
+                    } else {
+                        echo 'Metadata: <em>Not found or not updated for S3</em>';
+                        // Show update form for individual video
+                        echo '<form method="post" action="' . admin_url('admin-post.php') . '">';
+                        echo '<input type="hidden" name="action" value="update_video_metadata">';
+                        echo '<input type="hidden" name="video_id" value="' . esc_attr($video_id) . '">';
+                        echo '<input type="hidden" name="filename" value="' . esc_attr($video) . '">';
+                        wp_nonce_field('update_video_metadata_nonce', 'update_video_metadata_nonce');
+                        echo '<input type="submit" class="button" value="Update Metadata">';
+                        echo '</form>';
+                    }
+                    echo '</div>';
+                }
+                echo '</div>'; // Close video-item div
+                echo '</div>'; // Close video-item-row div
+            }
+            echo '</div>'; // Close video-list div
+        } else {
+            echo '<p>No videos found in the S3 bucket.</p>';
+        }
+        ?>
+    </div>
+
+    <div id="logs" class="vts-tab-content" style="display:none;">
+        <?php
+        // List logs in bucket
+        $logs = array_filter(video_to_s3_list_bucket_contents(), function($item) {
+            return strpos($item, 'logs/') === 0 || strpos($item, 'AWSLogs/') === 0;
+        });
+
+        if (!empty($logs)) {
+            echo '<ul>';
+            foreach ($logs as $log) {
+                echo '<li>' . esc_html($log) . '</li>';
+            }
+            echo '</ul>';
+        } else {
+            echo '<p>No logs found in the S3 bucket.</p>';
+        }
+        ?>
+    </div>
+
+    <script type="text/javascript">
+    jQuery(document).ready(function($) {
+        $('.nav-tab-wrapper a').click(function(e) {
+            e.preventDefault();
+            var tab_id = $(this).attr('href');
+            $('.vts-tab-content').hide();
+            $('.nav-tab').removeClass('nav-tab-active');
+            $(this).addClass('nav-tab-active');
+            $(tab_id).show();
+        });
+    });
+    </script>
+
+    <?php
+    // Form for AWS credentials
+    echo '<form method="post" action="options.php">';
+    settings_fields('video_to_s3_options');
+    wp_nonce_field('update-aws-credentials', 'update_aws_credentials_nonce');
+    do_settings_sections('video_to_s3');
+    submit_button('Update AWS Credentials');
+
+    // Check if form submitted and update options
+    if (isset($_POST['submit']) && wp_verify_nonce($_POST['update_aws_credentials_nonce'], 'update-aws-credentials')) {
+        echo '<p class="notice notice-success is-dismissible">Settings Updated!</p>';
+    }
+    echo '</form>';
+
+    echo '<h3>Upload Videos to S3</h3>';
+    echo '<p><a href="' . admin_url('admin-post.php?action=upload_videos_to_s3') . '" class="button">Upload All Videos to S3</a></p>';
+
+    // Video selection form
+    $media_items = get_posts(array('post_type' => 'attachment', 'post_mime_type' => 'video'));
+    $existing_videos = get_transient('vts_existing_videos') ?: [];
+    echo '<form method="post" action="' . admin_url('admin-post.php') . '">';
+    echo '<input type="hidden" name="action" value="upload_videos_to_s3">';
+    foreach ($media_items as $item) {
+        $video_name = strtolower(basename($item->guid)); // Convert to lowercase
+        if (!in_array($video_name, $existing_videos)) {
+            echo '<input type="checkbox" name="selected_videos[]" value="' . $item->ID . '">' . esc_html($item->post_title) . '<br>';
+        }
+    }
+    echo '<input type="submit" value="Upload Selected Videos">';
+    echo '</form>';
+
+    echo '</div>';
+}
+
+// Function to handle updating all metadata
+function video_to_s3_update_all_metadata() {
+    if (!current_user_can('manage_options')) {
+        wp_die(__('You do not have sufficient permissions to access this page.'));
+    }
+
+    check_admin_referer('update_all_metadata_nonce');
+
+    $bucket_contents = video_to_s3_list_bucket_contents();
+    $updated_count = 0;
+    $errors = [];
+
+    foreach ($bucket_contents as $video) {
+        $video_id = video_to_s3_get_video_id_by_filename($video);
+        if ($video_id) {
+            try {
+                $metadata = array(
+                    'file' => $video,  // Assuming filenames in bucket are what we want for metadata
+                );
+                wp_update_attachment_metadata($video_id, $metadata);
+                $updated_count++;
+            } catch (Exception $e) {
+                $errors[] = "Failed to update metadata for " . $video . ": " . $e->getMessage();
+            }
+        }
+    }
+
+    if ($updated_count > 0) {
+        set_transient('vts_upload_messages', ['[info]Updated metadata for ' . $updated_count . ' videos.'], 60);
+    }
+    if (!empty($errors)) {
+        set_transient('vts_upload_messages', array_merge(['[error]Encountered errors while updating metadata:'], $errors), 60);
+    }
+
+    wp_redirect(admin_url('admin.php?page=video-to-s3'));
+    exit;
+}
+add_action('admin_post_update_all_metadata', 'video_to_s3_update_all_metadata');
+
+// Helper function to get video ID from filename
+function video_to_s3_get_video_id_by_filename($filename) {
+    global $wpdb;
+    $query = $wpdb->prepare("SELECT ID FROM {$wpdb->posts} WHERE post_type = 'attachment' AND post_mime_type LIKE 'video/%' AND guid LIKE %s", '%' . $wpdb->esc_like($filename) . '%');
+    $result = $wpdb->get_var($query);
+    return $result ? intval($result) : false;
+}
+
+// Handle metadata update for a video
+function video_to_s3_update_video_metadata() {
+    if (!current_user_can('manage_options')) {
+        wp_die(__('You do not have sufficient permissions to access this page.'));
+    }
+
+    check_admin_referer('update_video_metadata_nonce');
+
+    $video_id = isset($_POST['video_id']) ? intval($_POST['video_id']) : 0;
+    $filename = isset($_POST['filename']) ? sanitize_file_name($_POST['filename']) : '';
+
+    if ($video_id && $filename) {
+        try {
+            $metadata = array(
+                'file' => $filename,
+            );
+            wp_update_attachment_metadata($video_id, $metadata);
+            set_transient('vts_upload_messages', ['[info]Metadata Updated for ' . $filename], 60);
+            error_log("Metadata updated successfully for video ID: " . $video_id);
+        } catch (Exception $e) {
+            error_log("Error updating metadata for video ID: " . $video_id . " - " . $e->getMessage());
+            set_transient('vts_upload_messages', ['[error]Failed to update metadata: ' . $e->getMessage()], 60);
+        }
+    } else {
+        error_log("Failed to update metadata due to missing video ID or filename.");
+        set_transient('vts_upload_messages', ['[error]Failed to update metadata. Missing video ID or filename.'], 60);
+    }
+
+    wp_redirect(admin_url('admin.php?page=video-to-s3'));
+    exit;
+}
+
+// Helper function for AWS Secret Key field with show/hide functionality
+function video_to_s3_aws_secret_field() {
+    $secret_key = get_option('vts_aws_secret');
+    ?>
+    <div class="vts-secret-key-wrapper">
+        <input type="password" id="vts_aws_secret" name="vts_aws_secret" value="<?php echo esc_attr($secret_key); ?>" />
+        <button type="button" class="button" id="vts_toggle_secret">Show</button>
+    </div>
+    <script type="text/javascript">
+    jQuery(document).ready(function($) {
+        $('#vts_toggle_secret').on('click', function() {
+            var input = $('#vts_aws_secret');
+            if (input.attr('type') === 'password') {
+                input.attr('type', 'text');
+                $(this).text('Hide');
+            } else {
+                input.attr('type', 'password');
+                $(this).text('Show');
+            }
+        });
+    });
+    </script>
+    <?php
+}
+
 /**
- * Displays the content for the Video to S3 Dashboard page.
- * This function is responsible for rendering the main dashboard interface
- * where users can interact with the video upload and management features.
+ * Enqueues admin-specific stylesheets.
+ *
+ * This function is hooked to the 'admin_enqueue_scripts' action, which is triggered
+ * when scripts and styles are enqueued for the admin dashboard. It ensures that
+ * the specified CSS file is loaded only in the admin area.
  *
  * @return void
  */
