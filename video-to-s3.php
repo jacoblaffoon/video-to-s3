@@ -357,6 +357,15 @@ function modify_attachment_details_for_s3_or_local($form_fields, $post) {
     $bucket = get_option('vts_aws_bucket');
     $region = get_option('vts_aws_region');
     
+    $s3_client = new Aws\S3\S3Client([
+        'version' => 'latest',
+        'region'  => $region,
+        'credentials' => [
+            'key'    => get_option('vts_aws_access_key_id'),
+            'secret' => get_option('vts_aws_secret_access_key'),
+        ]
+    ]);
+
     if (is_array($metadata) && isset($metadata['file'])) {
         // Metadata already suggests S3 storage
         $s3_url = "https://{$bucket}.s3.{$region}.amazonaws.com/{$metadata['file']}";
@@ -374,7 +383,7 @@ function modify_attachment_details_for_s3_or_local($form_fields, $post) {
         $s3_url = "https://{$bucket}.s3.{$region}.amazonaws.com/{$s3_filename}";
 
         // Check if file exists in S3 before updating metadata
-        if (video_to_s3_check_file_exists($bucket, $s3_filename)) {
+        if (video_to_s3_check_file_exists($bucket, $s3_filename, $s3_client)) {
             $metadata = array(
                 'file' => $s3_filename,
             );
